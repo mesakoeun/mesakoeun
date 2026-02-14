@@ -98,3 +98,6 @@ ALTER TABLE people ADD INDEX idx_gender (gender);
 
 -- Composite Index for Geographic location (Optimizes searching from Province down to Village)
 ALTER TABLE people ADD INDEX idx_location (province_id, district_id, commune_id, village_id);
+ALTER TABLE tbl_district ADD INDEX idx_province_id (province_id);
+ALTER TABLE tbl_commune ADD INDEX idx_district_id (district_id);
+ALTER TABLE tbl_village ADD INDEX idx_commune_id (commune_id);

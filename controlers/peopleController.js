@@ -51,44 +51,67 @@ export const searchPeople = async (req, res) => {
     district_id,
     commune_id,
     village_id,
-    gender,
-    givenname,
+    age_from,
+    age_to,
+    page = 1,
   } = req.query;
 
-  let sql = "SELECT * FROM people WHERE 1=1";
+  const limit = 100; // Records per page
+  const offset = (page - 1) * limit;
+
+  let whereClause = " WHERE 1=1";
   const params = [];
 
   if (province_id) {
-    sql += " AND province_id = ?";
+    whereClause += " AND province_id = ?";
     params.push(province_id);
   }
   if (district_id) {
-    sql += " AND district_id = ?";
+    whereClause += " AND district_id = ?";
     params.push(district_id);
   }
   if (commune_id) {
-    sql += " AND commune_id = ?";
+    whereClause += " AND commune_id = ?";
     params.push(commune_id);
   }
   if (village_id) {
-    sql += " AND village_id = ?";
+    whereClause += " AND village_id = ?";
     params.push(village_id);
   }
-  if (gender) {
-    sql += " AND gender = ?";
-    params.push(gender);
+  if (age_from || age_to) {
+    const currentYear = new Date().getFullYear();
+    if (age_from) {
+      // If age_from is 18, they must be born on or BEFORE (2026 - 18)
+      const yearFrom = currentYear - parseInt(age_from);
+      whereClause += " AND dob <= ?";
+      params.push(`${yearFrom}-12-31`);
+    }
+    if (age_to) {
+      // If age_to is 50, they must be born on or AFTER (2026 - 50)
+      const yearTo = currentYear - parseInt(age_to);
+      whereClause += " AND dob >= ?";
+      params.push(`${yearTo}-01-01`);
+    }
   }
-  if (givenname) {
-    sql += " AND givenname LIKE ?";
-    params.push(`${givenname}%`);
-  }
-
-  sql += " LIMIT 100";
-
   try {
-    const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM people ${whereClause}`,
+      params,
+    );
+    const totalRecords = countResult[0].total;
+
+    const dataSql = `SELECT * FROM people ${whereClause} LIMIT ? OFFSET ?`;
+    const [rows] = await pool.query(dataSql, [...params, limit, offset]);
+
+    res.json({
+      data: rows,
+      pagination: {
+        totalRecords,
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalRecords / limit),
+      },
+    });
   } catch (err) {
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({ error: err.message });
   }
 };

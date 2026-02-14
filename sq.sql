@@ -79,7 +79,7 @@ CREATE TABLE people (
     id INT AUTO_INCREMENT PRIMARY KEY,
     givenname VARCHAR(100) NOT NULL,
     surname VARCHAR(100) NOT NULL,
-    gender ENUM('Male', 'Female', 'Other'),
+    gender ENUM('Male', 'Female'),
     dob DATE,
     province_id INT,
     district_id INT,
@@ -101,3 +101,5 @@ ALTER TABLE people ADD INDEX idx_location (province_id, district_id, commune_id,
 ALTER TABLE tbl_district ADD INDEX idx_province_id (province_id);
 ALTER TABLE tbl_commune ADD INDEX idx_district_id (district_id);
 ALTER TABLE tbl_village ADD INDEX idx_commune_id (commune_id);
+ALTER TABLE people 
+MODIFY COLUMN gender ENUM('Male', 'Female') NOT NULL;

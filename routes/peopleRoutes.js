@@ -2,6 +2,8 @@ import express from "express";
 import {
   getProvinces,
   getDistricts,
+  getCommunes,
+  getVillages,
   searchPeople,
 } from "../controlers/peopleController.js";
 

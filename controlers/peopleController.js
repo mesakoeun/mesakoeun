@@ -47,6 +47,9 @@ export const getVillages = async (req, res) => {
 
 export const searchPeople = async (req, res) => {
   const {
+    givenname,
+    surname,
+    gender,
     province_id,
     district_id,
     commune_id,
@@ -61,7 +64,18 @@ export const searchPeople = async (req, res) => {
 
   let whereClause = " WHERE 1=1";
   const params = [];
-
+  if (givenname && givenname.trim() !== "") {
+    whereClause += " AND TRIM(givenname) = ?";
+    params.push(givenname.trim());
+  }
+  if (surname && surname.trim() !== "") {
+    whereClause += " AND TRIM(surname) = ?";
+    params.push(surname.trim());
+  }
+  if (gender && gender.trim().length > 0) {
+    whereClause += " AND gender = ?";
+    params.push(gender);
+  }
   if (province_id) {
     whereClause += " AND province_id = ?";
     params.push(province_id);

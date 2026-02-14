@@ -15,7 +15,7 @@ export const getDistricts = async (req, res) => {
   try {
     const [rows] = await pool.query(
       "SELECT id, name FROM tbl_district WHERE province_id = ?",
-      [req.params.provinceId],
+      [req.params.province_id],
     );
     res.json(rows);
   } catch (err) {

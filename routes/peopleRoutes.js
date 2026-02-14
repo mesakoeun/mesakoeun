@@ -8,7 +8,7 @@ import {
 const router = express.Router();
 
 router.get("/provinces", getProvinces);
-router.get("/districts/:provinceId", getDistricts); // Dynamic param for filtering
+router.get("/districts/:province_id", getDistricts); // Dynamic param for filtering
 router.get("/search", searchPeople);
 
 export default router;

@@ -88,6 +88,38 @@ CREATE TABLE people (
     create_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     update_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+CREATE TABLE summary_demographics (
+    province_id INT,
+    district_id INT,
+    commune_id INT,
+    village_id INT,
+    birth_year INT,
+    gender ENUM('Male', 'Female'),
+    total_people INT,
+    -- Add index for lightning fast filtering
+    INDEX (province_id, district_id, commune_id, birth_year)
+);DELIMITER //
+
+CREATE PROCEDURE RefreshSummary()
+BEGIN
+    -- 1. Clear old summary
+    TRUNCATE TABLE summary_demographics;
+
+    -- 2. Insert new calculations (This takes time, but runs in background)
+    INSERT INTO summary_demographics (province_id, district_id, commune_id, village_id, birth_year, gender, total_people)
+    SELECT 
+        province_id, 
+        district_id, 
+        commune_id, 
+        village_id, 
+        YEAR(dob) as birth_year,
+        gender,
+        COUNT(*) as total_people
+    FROM people
+    GROUP BY province_id, district_id, commune_id, village_id, YEAR(dob), gender;
+END //
+
+DELIMITER ;
 -- Index for Name searches (Surname and Givenname)
 ALTER TABLE people ADD INDEX idx_surname (surname);
 ALTER TABLE people ADD INDEX idx_givenname (givenname);
@@ -103,3 +135,46 @@ ALTER TABLE tbl_commune ADD INDEX idx_district_id (district_id);
 ALTER TABLE tbl_village ADD INDEX idx_commune_id (commune_id);
 ALTER TABLE people 
 MODIFY COLUMN gender ENUM('Male', 'Female') NOT NULL;
+
+DELIMITER //
+
+DROP TRIGGER IF EXISTS after_person_update //
+
+CREATE TRIGGER after_person_update
+AFTER UPDATE ON people
+FOR EACH ROW
+BEGIN
+    -- 1. ONLY run this if relevant columns actually changed
+    -- This saves performance if you just updated their "phone number"
+    IF (OLD.province_id != NEW.province_id OR 
+        OLD.district_id != NEW.district_id OR 
+        OLD.commune_id != NEW.commune_id OR 
+        OLD.village_id != NEW.village_id OR 
+        OLD.gender != NEW.gender OR 
+        YEAR(OLD.dob) != YEAR(NEW.dob)) THEN
+
+        -- 2. Decrement the OLD location count
+        UPDATE summary_demographics
+        SET total_people = GREATEST(0, total_people - 1) -- Prevent negative numbers
+        WHERE province_id = OLD.province_id 
+          AND district_id = OLD.district_id
+          AND commune_id = OLD.commune_id
+          AND village_id = OLD.village_id
+          AND birth_year = YEAR(OLD.dob)
+          AND gender = OLD.gender;
+
+        -- 3. Increment the NEW location count
+        INSERT INTO summary_demographics 
+            (province_id, district_id, commune_id, village_id, birth_year, gender, total_people)
+        VALUES 
+            (NEW.province_id, NEW.district_id, NEW.commune_id, NEW.village_id, YEAR(NEW.dob), NEW.gender, 1)
+        ON DUPLICATE KEY UPDATE 
+            total_people = total_people + 1;
+            
+    END IF;
+END //
+
+DELIMITER ;
+-- This creates a sorted copy of just the columns needed for your report
+CREATE INDEX idx_report_performance 
+ON people (province_id, district_id, commune_id, village_id, gender, dob);

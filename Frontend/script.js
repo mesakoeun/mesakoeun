@@ -150,3 +150,78 @@ async function searchPeople(page = 1) {
 function resetFilters() {
   window.location.reload();
 }
+// ... (Keep existing dropdown logic) ...
+
+async function generateReport() {
+  const tableHead = document.querySelector("#reportTable thead tr");
+  const tableBody = document.querySelector("#reportTable tbody");
+  const statsDiv = document.getElementById("stats-container");
+
+  // 1. Get Params
+  const params = new URLSearchParams({
+    province_id: document.getElementById("province").value,
+    district_id: document.getElementById("district").value,
+    commune_id: document.getElementById("commune").value,
+    age_from: document.getElementById("age_from").value,
+    age_to: document.getElementById("age_to").value,
+    gender: document.getElementById("gender").value,
+  });
+
+  tableBody.innerHTML =
+    '<tr><td colspan="100" style="text-align:center;">Generating Report...</td></tr>';
+  statsDiv.innerHTML = "";
+
+  try {
+    const response = await fetch(`${API_BASE}/report?${params.toString()}`);
+    const result = await response.json();
+
+    // result.headers = ["No", "District Name", "Age 15", "Age 16"...]
+    // result.data = [{location_name: "Chamkar Mon", "Age 15": 10, "Age 16": 5...}]
+
+    if (result.data.length === 0) {
+      tableBody.innerHTML =
+        '<tr><td colspan="100" style="text-align:center;">No data found.</td></tr>';
+      return;
+    }
+
+    // --- 2. Build Dynamic Header ---
+    tableHead.innerHTML = "";
+    result.headers.forEach((headerText) => {
+      const th = document.createElement("th");
+      th.textContent = headerText;
+      tableHead.appendChild(th);
+    });
+
+    // --- 3. Build Dynamic Rows ---
+    tableBody.innerHTML = "";
+    result.data.forEach((row, index) => {
+      const tr = document.createElement("tr");
+
+      // First Column: No.
+      let tdNo = document.createElement("td");
+      tdNo.textContent = index + 1;
+      tr.appendChild(tdNo);
+
+      // Second Column: Location Name (District Name / Commune Name etc)
+      let tdName = document.createElement("td");
+      tdName.textContent = row.location_name;
+      tr.appendChild(tdName);
+
+      // Remaining Columns: The Pivot Data (Age 15, Age 16, or Total)
+      // We loop through the headers (skipping 'No' and 'Name') to find matching keys
+      const pivotKeys = result.headers.slice(2);
+
+      pivotKeys.forEach((key) => {
+        let td = document.createElement("td");
+        td.textContent = row[key] || 0; // Access data using the header name key
+        tr.appendChild(td);
+      });
+
+      tableBody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error(err);
+    tableBody.innerHTML =
+      '<tr><td colspan="100" style="text-align:center; color:red;">Error generating report.</td></tr>';
+  }
+}

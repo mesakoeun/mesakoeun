@@ -4,7 +4,7 @@ import mysql from "mysql2/promise";
 async function seedLargeScale() {
   // 1. Connection Pool (Better for high-volume inserts)
   const pool = mysql.createPool({
-    host: "192.168.202.130",
+    host: "192.168.232.146",
     user: "admin_people", // Replace with your MariaDB username
     password: "password123", // Replace with your password
     database: "people", // Replace with your database name
@@ -45,7 +45,7 @@ async function seedLargeScale() {
         values.push([
           faker.person.firstName(),
           faker.person.lastName(),
-          faker.helpers.arrayElement(["Male", "Female", "Other"]),
+          faker.helpers.arrayElement(["Male", "Female"]),
           dob,
           faker.number.int({ min: 1, max: 25 }), // province_id
           null, // district_id

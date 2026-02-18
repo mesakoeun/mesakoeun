@@ -60,9 +60,25 @@ document.getElementById("commune").onchange = async (e) => {
   }
 };
 
+// --- Clear Results Function ---
+function clearResults() {
+  const tableBody = document.getElementById("tableBody");
+  const reportTableBody = document.querySelector("#reportTable tbody");
+  const paginationDiv = document.getElementById("pagination-controls");
+  const statsDiv = document.getElementById("stats-container");
+
+  tableBody.innerHTML =
+    '<tr><td colspan="5" style="text-align:center;">Use filters to begin searching.</td></tr>';
+  reportTableBody.innerHTML =
+    '<tr><td style="text-align: center">Select filters and click Generate Report</td></tr>';
+  paginationDiv.innerHTML = "";
+  statsDiv.style.display = "none";
+}
+
 // --- Search Logic ---
 async function searchPeople(page = 1) {
   currentPage = page;
+  clearResults();
   const statsDiv = document.getElementById("stats-container");
   const tableBody = document.getElementById("tableBody");
   const paginationDiv = document.getElementById("pagination-controls");
@@ -153,6 +169,7 @@ function resetFilters() {
 // ... (Keep existing dropdown logic) ...
 
 async function generateReport() {
+  clearResults();
   const tableHead = document.querySelector("#reportTable thead tr");
   const tableBody = document.querySelector("#reportTable tbody");
   const statsDiv = document.getElementById("stats-container");

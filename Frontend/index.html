@@ -156,7 +156,25 @@
         <button onclick="resetFilters()" style="background: #6c757d">
           Reset
         </button>
-        <button onclick="searchPeople(1)">Search Records</button>
+
+        <button
+          onclick="
+            clearResults();
+            generateReport();
+          "
+          style="background: #28a745"
+        >
+          Generate Demographic Report
+        </button>
+
+        <button
+          onclick="
+            clearResults();
+            searchPeople(1);
+          "
+        >
+          Search Records
+        </button>
       </div>
 
       <div id="stats-container" class="stats" style="display: none"></div>
@@ -179,11 +197,6 @@
           </tr>
         </tbody>
       </table>
-      <div class="button-row">
-        <button onclick="generateReport()" style="background: #28a745">
-          Generate Demographic Report
-        </button>
-      </div>
 
       <div class="table-container">
         <table id="reportTable">

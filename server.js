@@ -4,10 +4,10 @@ import mysql from "mysql2/promise";
 async function seedLargeScale() {
   // 1. Connection Pool (Better for high-volume inserts)
   const pool = mysql.createPool({
-    host: "192.168.232.146",
+    host: "192.168.2.129",
     user: "admin_people", // Replace with your MariaDB username
     password: "password123", // Replace with your password
-    database: "people", // Replace with your database name
+    database: "db_people", // Replace with your database name
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,

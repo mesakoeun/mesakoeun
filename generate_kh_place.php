@@ -4,8 +4,6 @@
  *
  * Reads the full national kh-places.csv (all 25 provinces) and generates
  * correct SQL INSERTs for tbl_province, tbl_district, tbl_commune, tbl_village.
- *
- * Fixed: Uses actual geographic codes as Primary Keys to prevent duplicate reference breaks.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,11 +52,15 @@ const BATCH_SIZE = 500;
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
-function sqlStr(?string $v): string
+function sqlStrRequired(?string $v, string $fallback = 'Unknown'): string
 {
-    if ($v === null || $v === '') return 'NULL';
+    $v = trim($v ?? '');
+    if ($v === '') {
+        $v = $fallback;
+    }
     return "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $v) . "'";
 }
+
 function sqlInt(?int $v): string { return $v === null ? 'NULL' : (string)$v; }
 
 function provinceKey(string $code): string
@@ -94,10 +96,15 @@ if (isset($header[0])) $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', $header[
 $colMap = [];
 foreach ($header as $i => $col) $colMap[trim($col)] = $i;
 
-$iType  = $colMap['Type'];
-$iCode  = $colMap['Code'];
-$iKhmer = $colMap['Name (Khmer)'];
-$iLatin = $colMap['Name (Latin)'];
+// Secure column indexing map fallbacks
+$iType  = $colMap['Type'] ?? null;
+$iCode  = $colMap['Code'] ?? null;
+$iKhmer = $colMap['Name (Khmer)'] ?? null;
+$iLatin = $colMap['Name (Latin)'] ?? null;
+
+if ($iType === null || $iCode === null || $iKhmer === null || $iLatin === null) {
+    fwrite(STDERR, "ERROR: Missing required CSV columns.\n"); exit(1);
+}
 
 $districtRows = [];
 $communeRows  = [];
@@ -105,14 +112,19 @@ $villageRows  = [];
 $usedProvinceCodes = [];
 
 while (($row = fgetcsv($handle)) !== false) {
-    if (count($row) < 4) continue;
+    if (count($row) <= max($iType, $iCode, $iKhmer, $iLatin)) continue;
 
-    $type  = trim($row[$iType]);
-    $code  = trim($row[$iCode]);
-    $khmer = trim($row[$iKhmer]);
-    $latin = trim($row[$iLatin]);
+    $type  = trim($row[$iType] ?? '');
+    $code  = trim($row[$iCode] ?? '');
+    $khmer = trim($row[$iKhmer] ?? '');
+    $latin = trim($row[$iLatin] ?? '');
 
-    if ($code === '') continue;
+    if ($code === '' || $type === '') continue;
+
+    // Direct fallback if Latin text translation entry is completely empty
+    if ($latin === '' && $khmer !== '') {
+        $latin = $khmer;
+    }
 
     switch ($type) {
         case TYPE_DISTRICT:
@@ -172,8 +184,8 @@ $out[] = "SET FOREIGN_KEY_CHECKS = 0;\n";
 $out[] = "INSERT INTO `tbl_province` (`id`, `name_latin`, `name_khmer`) VALUES";
 $pRows = [];
 foreach (array_keys($usedProvinceCodes) as $pCode) {
-    $pData = $PROVINCES[$pCode] ?? ['name_latin' => "Province {$pCode}", 'name_khmer' => ''];
-    $pRows[] = sprintf("  (%d, %s, %s)", (int)$pCode, sqlStr($pData['name_latin']), sqlStr($pData['name_khmer']));
+    $pData = $PROVINCES[$pCode] ?? ['name_latin' => "Province {$pCode}", 'name_khmer' => "ខេត្ត {$pCode}"];
+    $pRows[] = sprintf("  ( %d, %s, %s )", (int)$pCode, sqlStrRequired($pData['name_latin']), sqlStrRequired($pData['name_khmer']));
 }
 $out[] = implode(",\n", $pRows) . ";\n";
 
@@ -182,7 +194,7 @@ foreach (buildBatches($districtRows, BATCH_SIZE) as $batch) {
     $out[] = "INSERT INTO `tbl_district` (`id`, `province_id`, `name_latin`, `name_khmer`) VALUES";
     $dRows = [];
     foreach ($batch as $d) {
-        $dRows[] = sprintf("  (%d, %d, %s, %s)", $d['code'], $d['province_id'], sqlStr($d['name_latin']), sqlStr($d['name_khmer']));
+        $dRows[] = sprintf("  ( %d, %d, %s, %s )", $d['code'], $d['province_id'], sqlStrRequired($d['name_latin'], 'District ' . $d['code']), sqlStrRequired($d['name_khmer']));
     }
     $out[] = implode(",\n", $dRows) . ";\n";
 }
@@ -192,7 +204,7 @@ foreach (buildBatches($communeRows, BATCH_SIZE) as $batch) {
     $out[] = "INSERT INTO `tbl_commune` (`id`, `province_id`, `district_id`, `name_latin`, `name_khmer`) VALUES";
     $cRows = [];
     foreach ($batch as $c) {
-        $cRows[] = sprintf("  (%d, %d, %d, %s, %s)", $c['code'], $c['province_id'], $c['district_id'], sqlStr($c['name_latin']), sqlStr($c['name_khmer']));
+        $cRows[] = sprintf("  ( %d, %d, %d, %s, %s )", $c['code'], $c['province_id'], $c['district_id'], sqlStrRequired($c['name_latin'], 'Commune ' . $c['code']), sqlStrRequired($c['name_khmer']));
     }
     $out[] = implode(",\n", $cRows) . ";\n";
 }
@@ -202,7 +214,7 @@ foreach (buildBatches($villageRows, BATCH_SIZE) as $batch) {
     $out[] = "INSERT INTO `tbl_village` (`id`, `province_id`, `district_id`, `commune_id`, `name_latin`, `name_khmer`) VALUES";
     $vRows = [];
     foreach ($batch as $v) {
-        $vRows[] = sprintf("  (%d, %d, %d, %d, %s, %s)", $v['code'], $v['province_id'], $v['district_id'], $v['commune_id'], sqlStr($v['name_latin']), sqlStr($v['name_khmer']));
+        $vRows[] = sprintf("  ( %d, %d, %d, %d, %s, %s )", $v['code'], $v['province_id'], $v['district_id'], $v['commune_id'], sqlStrRequired($v['name_latin'], 'Village ' . $v['code']), sqlStrRequired($v['name_khmer']));
     }
     $out[] = implode(",\n", $vRows) . ";\n";
 }

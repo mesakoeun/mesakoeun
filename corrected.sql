@@ -10,7 +10,7 @@ SET CHARACTER SET utf8mb4;
 -- PROVINCE (e.g., ID: 1, 2, 12...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_province (
-    id         INT UNSIGNED     PRIMARY KEY, -- Handled via Geocode directly
+    id         INT UNSIGNED     PRIMARY KEY,
     name_latin VARCHAR(150)     NOT NULL,
     name_khmer VARCHAR(150)     NOT NULL,
     created_at TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
@@ -23,7 +23,7 @@ CREATE TABLE tbl_province (
 -- DISTRICT (e.g., ID: 102, 1201...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_district (
-    id          INT UNSIGNED    PRIMARY KEY, -- Handled via Geocode directly
+    id          INT UNSIGNED    PRIMARY KEY,
     province_id INT UNSIGNED    NOT NULL,
     name_latin  VARCHAR(150)    NOT NULL,
     name_khmer  VARCHAR(150)    NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE tbl_district (
 -- COMMUNE (e.g., ID: 10201, 120101...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_commune (
-    id          INT UNSIGNED    PRIMARY KEY, -- Handled via Geocode directly
+    id          INT UNSIGNED    PRIMARY KEY,
     province_id INT UNSIGNED    NOT NULL,
     district_id INT UNSIGNED    NOT NULL,
     name_latin  VARCHAR(150)    NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE tbl_commune (
 -- VILLAGE (e.g., ID: 1020101, 12010101...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_village (
-    id          INT UNSIGNED    PRIMARY KEY, -- Handled via Geocode directly
+    id          INT UNSIGNED    PRIMARY KEY,
     province_id INT UNSIGNED    NOT NULL,
     district_id INT UNSIGNED    NOT NULL,
     commune_id  INT UNSIGNED    NOT NULL,
@@ -212,4 +212,4 @@ BEGIN
     END IF;
 END //
 
-DELIMITER ;
+DELIMITER ; 

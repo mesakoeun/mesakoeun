@@ -1,17 +1,16 @@
 -- =============================================================
--- Cambodia Places — Corrected Schema
--- Adds name_latin + name_khmer to all location tables
--- to match the CSV source data.
+-- Cambodia Places — Fixed Schema (No Auto-Increment)
+-- Uses Official National Geocodes as Primary/Foreign Keys
 -- =============================================================
 
 SET NAMES utf8mb4;
 SET CHARACTER SET utf8mb4;
 
 -- -------------------------------------------------------------
--- PROVINCE
+-- PROVINCE (e.g., ID: 1, 2, 12...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_province (
-    id         INT UNSIGNED     AUTO_INCREMENT PRIMARY KEY,
+    id         INT UNSIGNED     PRIMARY KEY, -- Handled via Geocode directly
     name_latin VARCHAR(150)     NOT NULL,
     name_khmer VARCHAR(150)     NOT NULL,
     created_at TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
@@ -21,10 +20,10 @@ CREATE TABLE tbl_province (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------
--- DISTRICT  (ស្រុក + ក្រុង)
+-- DISTRICT (e.g., ID: 102, 1201...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_district (
-    id          INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
+    id          INT UNSIGNED    PRIMARY KEY, -- Handled via Geocode directly
     province_id INT UNSIGNED    NOT NULL,
     name_latin  VARCHAR(150)    NOT NULL,
     name_khmer  VARCHAR(150)    NOT NULL,
@@ -40,10 +39,10 @@ CREATE TABLE tbl_district (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------
--- COMMUNE  (ឃុំ + សង្កាត់)
+-- COMMUNE (e.g., ID: 10201, 120101...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_commune (
-    id          INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
+    id          INT UNSIGNED    PRIMARY KEY, -- Handled via Geocode directly
     province_id INT UNSIGNED    NOT NULL,
     district_id INT UNSIGNED    NOT NULL,
     name_latin  VARCHAR(150)    NOT NULL,
@@ -64,10 +63,10 @@ CREATE TABLE tbl_commune (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------
--- VILLAGE  (ភូមិ)
+-- VILLAGE (e.g., ID: 1020101, 12010101...)
 -- -------------------------------------------------------------
 CREATE TABLE tbl_village (
-    id          INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
+    id          INT UNSIGNED    PRIMARY KEY, -- Handled via Geocode directly
     province_id INT UNSIGNED    NOT NULL,
     district_id INT UNSIGNED    NOT NULL,
     commune_id  INT UNSIGNED    NOT NULL,

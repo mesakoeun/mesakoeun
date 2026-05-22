@@ -65,8 +65,35 @@ CREATE TABLE tbl_commune (
 -- -------------------------------------------------------------
 -- VILLAGE (e.g., ID: 1020101, 12010101...)
 -- -------------------------------------------------------------
+-- -------------------------------------------------------------
+-- COMMUNE (Updated - Removed unique key name constraint)
+-- -------------------------------------------------------------
+CREATE TABLE tbl_commune (
+    id          INT UNSIGNED    PRIMARY KEY, 
+    province_id INT UNSIGNED    NOT NULL,
+    district_id INT UNSIGNED    NOT NULL,
+    name_latin  VARCHAR(150)    NOT NULL,
+    name_khmer  VARCHAR(150)    NOT NULL,
+    created_at  TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP       DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_commune_province
+        FOREIGN KEY (province_id) REFERENCES tbl_province(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    CONSTRAINT fk_commune_district
+        FOREIGN KEY (district_id) REFERENCES tbl_district(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+
+    INDEX       idx_commune_district (district_id),
+    INDEX       idx_commune_name     (name_latin) -- Changed from UNIQUE KEY to a standard INDEX
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------------
+-- VILLAGE (Updated - Removed unique key name constraint)
+-- -------------------------------------------------------------
 CREATE TABLE tbl_village (
-    id          INT UNSIGNED    PRIMARY KEY,
+    id          INT UNSIGNED    PRIMARY KEY, 
     province_id INT UNSIGNED    NOT NULL,
     district_id INT UNSIGNED    NOT NULL,
     commune_id  INT UNSIGNED    NOT NULL,
@@ -88,7 +115,7 @@ CREATE TABLE tbl_village (
         ON DELETE CASCADE ON UPDATE CASCADE,
 
     INDEX       idx_village_commune (commune_id),
-    UNIQUE KEY  uk_village          (commune_id, name_latin)
+    INDEX       idx_village_name    (name_latin) -- Changed from UNIQUE KEY to a standard INDEX
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------------

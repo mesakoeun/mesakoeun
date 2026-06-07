@@ -44,8 +44,15 @@ export const getDemographicReport = async (req, res) => {
     nameCol = "Province Name";
   }
 
-  // Ensure the summary cache is current before querying the report.
-  await pool.query("CALL RefreshSummary()");
+  // Refresh the summary cache only when it is empty.
+  // Rebuilding it on every report request is expensive; the cache is already
+  // populated after the first successful run.
+  const [summaryCheck] = await pool.query(
+    "SELECT COUNT(*) AS cnt FROM summary_demographics",
+  );
+  if (summaryCheck[0].cnt === 0) {
+    await pool.query("CALL RefreshSummary()");
+  }
 
   // --- 2. Dynamic Pivot Columns (Optimized) ---
   let selectColumns = `loc.name_khmer AS location_name`;

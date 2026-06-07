@@ -1,12 +1,76 @@
 const API_BASE = "http://localhost:3000/api";
 let currentPage = 1;
+let currentPersonId = null;
+let currentMode = "view";
+
+function getRole() {
+  return localStorage.getItem("userRole") || "guest";
+}
+
+function updateAuthUI() {
+  const role = getRole();
+  const authStatus = document.getElementById("authStatus");
+  const addPersonBtn = document.getElementById("addPersonBtn");
+  if (authStatus) authStatus.textContent = role === "guest" ? "Not logged in" : `Logged in as ${role}`;
+  if (addPersonBtn) addPersonBtn.style.display = role === "admin" ? "inline-block" : "none";
+}
+
+async function loginAs(role) {
+  const username = role === "admin" ? "admin" : "user";
+  const password = role === "admin" ? "admin123" : "user123";
+
+  try {
+    const res = await fetch(`${API_BASE}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || "Login failed");
+    localStorage.setItem("userRole", result.role);
+    localStorage.setItem("userName", result.username);
+    updateAuthUI();
+    alert(`Logged in as ${result.role}`);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function logout() {
+  localStorage.removeItem("userRole");
+  localStorage.removeItem("userName");
+  updateAuthUI();
+}
 
 // --- Utility: Calculate Age ---
+function toDateInputValue(value) {
+  if (!value) return "";
+  return String(value).slice(0, 10);
+}
+
+function formatDobLabel(value) {
+  const text = toDateInputValue(value);
+  if (!text) return "";
+  const [year, month, day] = text.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 function calculateAge(dobString) {
-  const birthday = new Date(dobString);
-  const ageDifMs = Date.now() - birthday.getTime();
-  const ageDate = new Date(ageDifMs);
-  return Math.abs(ageDate.getUTCFullYear() - 1970);
+  if (!dobString) return "";
+
+  const [year, month, day] = String(dobString).slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return "";
+
+  const birthday = new Date(year, month - 1, day);
+  const today = new Date();
+  let age = today.getFullYear() - birthday.getFullYear();
+  const monthDiff = today.getMonth() - birthday.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+    age -= 1;
+  }
+
+  return age;
 }
 
 // --- Dropdown Management ---
@@ -16,7 +80,7 @@ function fillSelect(elementId, data, placeholder) {
   data.forEach((item) => {
     const opt = document.createElement("option");
     opt.value = item.id;
-    opt.textContent = item.name;
+    opt.textContent = item.name_khmer || item.name || "Unnamed";
     select.appendChild(opt);
   });
   select.disabled = false;
@@ -32,6 +96,14 @@ function resetSelects(ids) {
 
 // --- Cascading Listeners ---
 window.addEventListener("DOMContentLoaded", async () => {
+  updateAuthUI();
+  document.getElementById("loginAdminBtn").onclick = () => loginAs("admin");
+  document.getElementById("loginUserBtn").onclick = () => loginAs("user");
+  document.getElementById("logoutBtn").onclick = logout;
+  document.getElementById("addPersonBtn").onclick = () => openPersonModal("create");
+  document.getElementById("closeModalBtn").onclick = closePersonModal;
+  document.getElementById("savePersonBtn").onclick = savePerson;
+
   const res = await fetch(`${API_BASE}/provinces`);
   fillSelect("province", await res.json(), "Select Province");
 });
@@ -139,13 +211,18 @@ async function searchPeople(page = 1) {
     tableBody.innerHTML = data
       .map((person, i) => {
         const indexNumber = (currentPage - 1) * 100 + (i + 1);
+        const isAdmin = getRole() === "admin";
         return `
                 <tr>
                     <td>${indexNumber}</td>
                     <td><strong>${person.surname} ${person.givenname}</strong></td>
                     <td>${person.gender}</td>
                     <td>${calculateAge(person.dob)}</td>
-                    <td>${new Date(person.dob).toLocaleDateString()}</td>
+                    <td>${formatDobLabel(person.dob)}</td>
+                    <td>
+                      <button onclick="viewPersonDetail(${person.id})" type="button">View</button>
+                      ${isAdmin ? `<button onclick="openPersonModal('edit', ${person.id})" type="button" style="background:#28a745; margin-left:6px;">Edit</button>` : ""}
+                    </td>
                 </tr>
             `;
       })
@@ -166,7 +243,135 @@ async function searchPeople(page = 1) {
 function resetFilters() {
   window.location.reload();
 }
-// ... (Keep existing dropdown logic) ...
+
+async function viewPersonDetail(id) {
+  try {
+    const res = await fetch(`${API_BASE}/people/${id}`);
+    const person = await res.json();
+    if (!res.ok) throw new Error(person.error || "Unable to fetch person details");
+    const historyRes = await fetch(`${API_BASE}/people/${id}/history`);
+    const history = await historyRes.json();
+    openPersonModal("view", id, person, history);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function openPersonModal(mode, id = null, person = null, history = []) {
+  currentMode = mode;
+  currentPersonId = id;
+  const modal = document.getElementById("personModal");
+  const modalTitle = document.getElementById("modalTitle");
+  const personForm = document.getElementById("personForm");
+  const historyBox = document.getElementById("historyBox");
+  const saveBtn = document.getElementById("savePersonBtn");
+
+  if (mode === "create") {
+    modalTitle.textContent = "Add Person";
+    saveBtn.style.display = getRole() === "admin" ? "inline-block" : "none";
+    personForm.innerHTML = `
+      <label>Given Name<input id="form_givenname" /></label>
+      <label>Surname<input id="form_surname" /></label>
+      <label>Gender<select id="form_gender"><option value="">Select</option><option>Male</option><option>Female</option></select></label>
+      <label>Date of Birth<input type="date" id="form_dob" /></label>
+      <label>Province<select id="form_province"></select></label>
+      <label>District<select id="form_district" disabled></select></label>
+      <label>Commune<select id="form_commune" disabled></select></label>
+      <label>Village<select id="form_village" disabled></select></label>
+    `;
+    fillSelect("form_province", await fetch(`${API_BASE}/provinces`).then(r => r.json()), "Select Province");
+    document.getElementById("form_province").onchange = async (e) => {
+      const district = document.getElementById("form_district");
+      district.innerHTML = '<option value="">Select District</option>';
+      district.disabled = true;
+      if (!e.target.value) return;
+      const res = await fetch(`${API_BASE}/districts/${e.target.value}`);
+      fillSelect("form_district", await res.json(), "Select District");
+    };
+    document.getElementById("form_district").onchange = async (e) => {
+      const commune = document.getElementById("form_commune");
+      commune.innerHTML = '<option value="">Select Commune</option>';
+      commune.disabled = true;
+      if (!e.target.value) return;
+      const res = await fetch(`${API_BASE}/communes/${e.target.value}`);
+      fillSelect("form_commune", await res.json(), "Select Commune");
+    };
+    document.getElementById("form_commune").onchange = async (e) => {
+      const village = document.getElementById("form_village");
+      village.innerHTML = '<option value="">Select Village</option>';
+      village.disabled = true;
+      if (!e.target.value) return;
+      const res = await fetch(`${API_BASE}/villages/${e.target.value}`);
+      fillSelect("form_village", await res.json(), "Select Village");
+    };
+    historyBox.innerHTML = "";
+  } else {
+    if (!person) {
+      person = await fetch(`${API_BASE}/people/${id}`).then(r => r.json());
+    }
+    modalTitle.textContent = mode === "edit" ? "Edit Person" : "Person Details";
+    saveBtn.style.display = mode === "edit" && getRole() === "admin" ? "inline-block" : "none";
+    personForm.innerHTML = `
+      <label>Given Name<input id="form_givenname" value="${person.givenname || ""}" ${mode === "view" ? "disabled" : ""}></label>
+      <label>Surname<input id="form_surname" value="${person.surname || ""}" ${mode === "view" ? "disabled" : ""}></label>
+      <label>Gender<select id="form_gender" ${mode === "view" ? "disabled" : ""}><option value="">Select</option><option ${person.gender === "Male" ? "selected" : ""}>Male</option><option ${person.gender === "Female" ? "selected" : ""}>Female</option></select></label>
+      <label>Date of Birth<input type="date" id="form_dob" value="${toDateInputValue(person.dob)}" ${mode === "view" ? "disabled" : ""}></label>
+      <label>Province<input id="form_province" value="${person.province_name || ""}" disabled></label>
+      <input type="hidden" id="form_province_id" value="${person.province_id || ""}">
+      <label>District<input id="form_district" value="${person.district_name || ""}" disabled></label>
+      <input type="hidden" id="form_district_id" value="${person.district_id || ""}">
+      <label>Commune<input id="form_commune" value="${person.commune_name || ""}" disabled></label>
+      <input type="hidden" id="form_commune_id" value="${person.commune_id || ""}">
+      <label>Village<input id="form_village" value="${person.village_name || ""}" disabled></label>
+      <input type="hidden" id="form_village_id" value="${person.village_id || ""}">
+    `;
+    historyBox.innerHTML = history.length
+      ? history.map((item) => `<div style="border-top:1px solid #eee; padding-top:8px;"><strong>${item.action}</strong> by ${item.changed_by} at ${new Date(item.changed_at).toLocaleString()}<br/><small>Before: ${item.old_values ? JSON.stringify(item.old_values) : '—'}</small><br/><small>After: ${item.new_values ? JSON.stringify(item.new_values) : '—'}</small></div>`).join("")
+      : "<em>No edit history yet.</em>";
+  }
+  modal.style.display = "flex";
+}
+
+function closePersonModal() {
+  document.getElementById("personModal").style.display = "none";
+}
+
+async function savePerson() {
+  const role = getRole();
+  if (role !== "admin") {
+    alert("Only admin can add or edit people.");
+    return;
+  }
+
+  const payload = {
+    role,
+    username: localStorage.getItem("userName") || "admin",
+    givenname: document.getElementById("form_givenname").value.trim(),
+    surname: document.getElementById("form_surname").value.trim(),
+    gender: document.getElementById("form_gender").value,
+    dob: document.getElementById("form_dob").value,
+    province_id: document.getElementById("form_province_id")?.value || document.getElementById("form_province")?.value || null,
+    district_id: document.getElementById("form_district_id")?.value || document.getElementById("form_district")?.value || null,
+    commune_id: document.getElementById("form_commune_id")?.value || document.getElementById("form_commune")?.value || null,
+    village_id: document.getElementById("form_village_id")?.value || document.getElementById("form_village")?.value || null,
+  };
+
+  try {
+    const url = currentMode === "edit" ? `${API_BASE}/people/${currentPersonId}` : `${API_BASE}/people`;
+    const res = await fetch(url, {
+      method: currentMode === "edit" ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || "Save failed");
+    alert(result.message || "Saved successfully.");
+    closePersonModal();
+    await searchPeople(1);
+  } catch (err) {
+    alert(err.message);
+  }
+}
 
 async function generateReport() {
   clearResults();

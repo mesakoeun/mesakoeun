@@ -1,0 +1,27 @@
+{
+  "name": "mesakoeun",
+  "version": "1.0.0",
+  "description": "testing",
+  "homepage": "https://github.com/mesakoeun/mesakoeun#readme",
+  "bugs": {
+    "url": "https://github.com/mesakoeun/mesakoeun/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mesakoeun/mesakoeun.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "faker-js": "^1.0.0",
+    "mysql2": "^3.22.5"
+  }
+}

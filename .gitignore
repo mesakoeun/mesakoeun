@@ -7,6 +7,4 @@ node_modules/
 *.log
 dist/
 build/
-package-lock.json
-package.json
 yarn.lock 

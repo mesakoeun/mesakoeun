@@ -192,6 +192,10 @@ async function generateReport() {
     const response = await fetch(`${API_BASE}/report?${params.toString()}`);
     const result = await response.json();
 
+    if (!response.ok) {
+      throw new Error(result.error || "Failed to generate report");
+    }
+
     // result.headers = ["No", "District Name", "Age 15", "Age 16"...]
     // result.data = [{location_name: "Chamkar Mon", "Age 15": 10, "Age 16": 5...}]
 
@@ -238,7 +242,9 @@ async function generateReport() {
     });
   } catch (err) {
     console.error(err);
-    tableBody.innerHTML =
-      '<tr><td colspan="100" style="text-align:center; color:red;">Error generating report.</td></tr>';
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="100" style="text-align:center; color:red;">${err.message || "Error generating report."}</td>
+      </tr>`;
   }
 }

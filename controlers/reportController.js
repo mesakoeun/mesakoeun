@@ -44,8 +44,11 @@ export const getDemographicReport = async (req, res) => {
     nameCol = "Province Name";
   }
 
+  // Ensure the summary cache is current before querying the report.
+  await pool.query("CALL RefreshSummary()");
+
   // --- 2. Dynamic Pivot Columns (Optimized) ---
-  let selectColumns = `loc.name AS location_name`;
+  let selectColumns = `loc.name_khmer AS location_name`;
   const currentYear = new Date().getFullYear();
 
   if (age_from && age_to) {
@@ -77,8 +80,8 @@ export const getDemographicReport = async (req, res) => {
         FROM summary_demographics s
         JOIN ${joinTable} loc ON ${joinCondition}
         ${whereClause}
-        GROUP BY ${groupByCol}, loc.name
-        ORDER BY loc.name ASC
+        GROUP BY ${groupByCol}, loc.name_khmer
+        ORDER BY loc.name_khmer ASC
     `;
 
   try {

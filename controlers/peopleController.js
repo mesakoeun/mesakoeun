@@ -3,7 +3,7 @@ import pool from "../db.js";
 export const getProvinces = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT id, name FROM tbl_province ORDER BY name ASC",
+      "SELECT id, name_khmer FROM tbl_province ORDER BY id ASC",
     );
     res.json(rows);
   } catch (err) {
@@ -14,7 +14,7 @@ export const getProvinces = async (req, res) => {
 export const getDistricts = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT id, name FROM tbl_district WHERE province_id = ?",
+      "SELECT id, name_khmer FROM tbl_district WHERE province_id = ?",
       [req.params.province_id],
     );
     res.json(rows);
@@ -25,7 +25,7 @@ export const getDistricts = async (req, res) => {
 export const getCommunes = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT id, name FROM tbl_commune WHERE district_id = ?",
+      "SELECT id, name_khmer FROM tbl_commune WHERE district_id = ?",
       [req.params.district_id],
     );
     res.json(rows);
@@ -36,7 +36,7 @@ export const getCommunes = async (req, res) => {
 export const getVillages = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT id, name FROM tbl_village WHERE commune_id = ?",
+      "SELECT id, name_khmer FROM tbl_village WHERE commune_id = ?",
       [req.params.commune_id],
     );
     res.json(rows);

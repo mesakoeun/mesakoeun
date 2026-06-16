@@ -4,7 +4,7 @@ import mysql from "mysql2/promise";
 async function seedLargeScale() {
   // 1. Connection Pool
   const pool = mysql.createPool({
-    host: "192.168.122.234",
+    host: "192.168.122.154",
     user: "admin_people",
     password: "password123",
     database: "db_people",
@@ -117,7 +117,7 @@ async function seedLargeScale() {
       }
     }
 
-    console.log("\n✨ Success! 2 Million records inserted.");
+    console.log(`\n✨ Success! ${TOTAL_RECORDS.toLocaleString()} records inserted.`);
     console.timeEnd("TotalExecutionTime");
   } catch (error) {
     console.error("❌ Critical Error during seeding:", error);

@@ -5,6 +5,7 @@ node_modules/
 .vscode/
 .idea/
 *.log
+.continue/
 dist/
 build/
 yarn.lock 

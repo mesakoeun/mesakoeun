@@ -86,6 +86,161 @@ function fillSelect(elementId, data, placeholder) {
   select.disabled = false;
 }
 
+function populateSelectFromData(select, data, placeholder, selectedValue = "") {
+  select.innerHTML = `<option value="">${placeholder}</option>`;
+  data.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = item.name_khmer || item.name || "Unnamed";
+    if (String(item.id) === String(selectedValue)) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
+  select.disabled = false;
+}
+
+async function loadAddressSelects(prefix, selectedIds = {}) {
+  const provinceSelect = document.getElementById(`${prefix}province`);
+  const districtSelect = document.getElementById(`${prefix}district`);
+  const communeSelect = document.getElementById(`${prefix}commune`);
+  const villageSelect = document.getElementById(`${prefix}village`);
+
+  const resetDependentSelects = (startLevel) => {
+    const resetMap = {
+      province: [districtSelect, communeSelect, villageSelect],
+      district: [communeSelect, villageSelect],
+      commune: [villageSelect],
+    };
+
+    (resetMap[startLevel] || []).forEach((select) => {
+      const label = select.id.replace(`${prefix}`, "");
+      select.innerHTML = `<option value="">Select ${label.charAt(0).toUpperCase() + label.slice(1)}</option>`;
+      select.disabled = true;
+    });
+  };
+
+  const provinces = await fetch(`${API_BASE}/provinces`).then((response) => response.json());
+  populateSelectFromData(provinceSelect, provinces, "Select Province", selectedIds.province_id || "");
+
+  provinceSelect.onchange = async (event) => {
+    resetDependentSelects("province");
+    if (!event.target.value) return;
+
+    const districts = await fetch(`${API_BASE}/districts/${event.target.value}`).then((response) => response.json());
+    populateSelectFromData(districtSelect, districts, "Select District");
+  };
+
+  districtSelect.onchange = async (event) => {
+    resetDependentSelects("district");
+    if (!event.target.value) return;
+
+    const communes = await fetch(`${API_BASE}/communes/${event.target.value}`).then((response) => response.json());
+    populateSelectFromData(communeSelect, communes, "Select Commune");
+  };
+
+  communeSelect.onchange = async (event) => {
+    resetDependentSelects("commune");
+    if (!event.target.value) return;
+
+    const villages = await fetch(`${API_BASE}/villages/${event.target.value}`).then((response) => response.json());
+    populateSelectFromData(villageSelect, villages, "Select Village");
+  };
+
+  if (!selectedIds.province_id) {
+    resetDependentSelects("province");
+    return;
+  }
+
+  const districts = await fetch(`${API_BASE}/districts/${selectedIds.province_id}`).then((response) => response.json());
+  populateSelectFromData(districtSelect, districts, "Select District", selectedIds.district_id || "");
+
+  if (!selectedIds.district_id) {
+    resetDependentSelects("district");
+    return;
+  }
+
+  const communes = await fetch(`${API_BASE}/communes/${selectedIds.district_id}`).then((response) => response.json());
+  populateSelectFromData(communeSelect, communes, "Select Commune", selectedIds.commune_id || "");
+
+  if (!selectedIds.commune_id) {
+    resetDependentSelects("commune");
+    return;
+  }
+
+  const villages = await fetch(`${API_BASE}/villages/${selectedIds.commune_id}`).then((response) => response.json());
+  populateSelectFromData(villageSelect, villages, "Select Village", selectedIds.village_id || "");
+}
+
+function renderHistoryEntry(item, entryNumber) {
+  const oldValues = item.old_values && typeof item.old_values === "string" ? JSON.parse(item.old_values) : item.old_values;
+  const newValues = item.new_values && typeof item.new_values === "string" ? JSON.parse(item.new_values) : item.new_values;
+  const fields = ["givenname", "surname", "gender", "dob", "province_id", "district_id", "commune_id", "village_id"];
+
+  const changedFields = fields.filter((field) => {
+    const referenceValue = oldValues?.[field];
+    const currentValue = newValues?.[field];
+    return String(referenceValue ?? "") !== String(currentValue ?? "");
+  });
+
+  const formatValue = (field, value) => {
+    if (value === null || value === undefined || value === "") return "—";
+    if (field === "dob") return formatDobLabel(value);
+    return String(value);
+  };
+
+  const fieldLabels = {
+    givenname: "Given Name",
+    surname: "Surname",
+    gender: "Gender",
+    dob: "Date of Birth",
+    province_id: "Province",
+    district_id: "District",
+    commune_id: "Commune",
+    village_id: "Village",
+  };
+
+  const headerBadge = changedFields.length
+    ? '<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#fff4d6;color:#9a6700;border:1px solid #ffd36b;">Changed fields: ' + changedFields.length + "</span>"
+    : '<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#e8f3ff;color:#0b6bcb;">No field change</span>';
+
+  return `
+    <div style="border:1px solid ${changedFields.length ? "#ffd36b" : "#e6e6e6"}; border-left:4px solid ${changedFields.length ? "#f0a500" : "#d9d9d9"}; border-radius:10px; padding:10px 12px; margin-bottom:10px; background:${changedFields.length ? "#fffaf0" : "#fff"};">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <strong>#${entryNumber} ${item.action}</strong>
+          <span style="color:#666;">by ${item.changed_by}</span>
+          <span style="color:#888; font-size:12px;">${new Date(item.changed_at).toLocaleString()}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${headerBadge}
+          <button type="button" onclick="toggleHistoryDetails(this)" aria-expanded="false" style="width:30px;height:30px;border-radius:999px;border:1px solid #d0d7de;background:#fff;color:#0b6bcb;font-weight:700;line-height:1;cursor:pointer;">+</button>
+        </div>
+      </div>
+      <div class="history-details" style="display:none; margin-top:8px; font-size:13px; line-height:1.6;">
+        ${fields
+          .map((field) => {
+            const isChanged = changedFields.includes(field);
+            return `<div style="${isChanged ? "color:#9a6700;font-weight:600;" : "color:#444;"}"><span style="min-width:110px;display:inline-block;">${fieldLabels[field]}:</span><span>${formatValue(field, newValues?.[field])}</span>${isChanged ? ' <span style="color:#d97706;font-size:12px;">(updated)</span>' : ""}</div>`;
+          })
+          .join("")}
+        <div style="margin-top:8px;color:#666;"><small>Before: ${oldValues ? JSON.stringify(oldValues) : "—"}</small></div>
+      </div>
+    </div>
+  `;
+}
+
+function toggleHistoryDetails(button) {
+  const card = button.closest("div[style*='border-radius:10px']");
+  const details = card?.querySelector(".history-details");
+  if (!details) return;
+
+  const isOpen = details.style.display !== "none";
+  details.style.display = isOpen ? "none" : "block";
+  button.textContent = isOpen ? "+" : "−";
+  button.setAttribute("aria-expanded", String(!isOpen));
+}
+
 function resetSelects(ids) {
   ids.forEach((id) => {
     const el = document.getElementById(id);
@@ -279,31 +434,7 @@ async function openPersonModal(mode, id = null, person = null, history = []) {
       <label>Commune<select id="form_commune" disabled></select></label>
       <label>Village<select id="form_village" disabled></select></label>
     `;
-    fillSelect("form_province", await fetch(`${API_BASE}/provinces`).then(r => r.json()), "Select Province");
-    document.getElementById("form_province").onchange = async (e) => {
-      const district = document.getElementById("form_district");
-      district.innerHTML = '<option value="">Select District</option>';
-      district.disabled = true;
-      if (!e.target.value) return;
-      const res = await fetch(`${API_BASE}/districts/${e.target.value}`);
-      fillSelect("form_district", await res.json(), "Select District");
-    };
-    document.getElementById("form_district").onchange = async (e) => {
-      const commune = document.getElementById("form_commune");
-      commune.innerHTML = '<option value="">Select Commune</option>';
-      commune.disabled = true;
-      if (!e.target.value) return;
-      const res = await fetch(`${API_BASE}/communes/${e.target.value}`);
-      fillSelect("form_commune", await res.json(), "Select Commune");
-    };
-    document.getElementById("form_commune").onchange = async (e) => {
-      const village = document.getElementById("form_village");
-      village.innerHTML = '<option value="">Select Village</option>';
-      village.disabled = true;
-      if (!e.target.value) return;
-      const res = await fetch(`${API_BASE}/villages/${e.target.value}`);
-      fillSelect("form_village", await res.json(), "Select Village");
-    };
+    await loadAddressSelects("form_");
     historyBox.innerHTML = "";
   } else {
     if (!person) {
@@ -311,22 +442,50 @@ async function openPersonModal(mode, id = null, person = null, history = []) {
     }
     modalTitle.textContent = mode === "edit" ? "Edit Person" : "Person Details";
     saveBtn.style.display = mode === "edit" && getRole() === "admin" ? "inline-block" : "none";
-    personForm.innerHTML = `
-      <label>Given Name<input id="form_givenname" value="${person.givenname || ""}" ${mode === "view" ? "disabled" : ""}></label>
-      <label>Surname<input id="form_surname" value="${person.surname || ""}" ${mode === "view" ? "disabled" : ""}></label>
-      <label>Gender<select id="form_gender" ${mode === "view" ? "disabled" : ""}><option value="">Select</option><option ${person.gender === "Male" ? "selected" : ""}>Male</option><option ${person.gender === "Female" ? "selected" : ""}>Female</option></select></label>
-      <label>Date of Birth<input type="date" id="form_dob" value="${toDateInputValue(person.dob)}" ${mode === "view" ? "disabled" : ""}></label>
-      <label>Province<input id="form_province" value="${person.province_name || ""}" disabled></label>
-      <input type="hidden" id="form_province_id" value="${person.province_id || ""}">
-      <label>District<input id="form_district" value="${person.district_name || ""}" disabled></label>
-      <input type="hidden" id="form_district_id" value="${person.district_id || ""}">
-      <label>Commune<input id="form_commune" value="${person.commune_name || ""}" disabled></label>
-      <input type="hidden" id="form_commune_id" value="${person.commune_id || ""}">
-      <label>Village<input id="form_village" value="${person.village_name || ""}" disabled></label>
-      <input type="hidden" id="form_village_id" value="${person.village_id || ""}">
-    `;
-    historyBox.innerHTML = history.length
-      ? history.map((item) => `<div style="border-top:1px solid #eee; padding-top:8px;"><strong>${item.action}</strong> by ${item.changed_by} at ${new Date(item.changed_at).toLocaleString()}<br/><small>Before: ${item.old_values ? JSON.stringify(item.old_values) : '—'}</small><br/><small>After: ${item.new_values ? JSON.stringify(item.new_values) : '—'}</small></div>`).join("")
+    if (mode === "edit") {
+      personForm.innerHTML = `
+        <label>Given Name<input id="form_givenname" value="${person.givenname || ""}" ${mode === "view" ? "disabled" : ""}></label>
+        <label>Surname<input id="form_surname" value="${person.surname || ""}" ${mode === "view" ? "disabled" : ""}></label>
+        <label>Gender<select id="form_gender" ${mode === "view" ? "disabled" : ""}><option value="">Select</option><option ${person.gender === "Male" ? "selected" : ""}>Male</option><option ${person.gender === "Female" ? "selected" : ""}>Female</option></select></label>
+        <label>Date of Birth<input type="date" id="form_dob" value="${toDateInputValue(person.dob)}" ${mode === "view" ? "disabled" : ""}></label>
+        <label>Province<select id="form_province"></select></label>
+        <label>District<select id="form_district" disabled></select></label>
+        <label>Commune<select id="form_commune" disabled></select></label>
+        <label>Village<select id="form_village" disabled></select></label>
+      `;
+      await loadAddressSelects("form_", {
+        province_id: person.province_id,
+        district_id: person.district_id,
+        commune_id: person.commune_id,
+        village_id: person.village_id,
+      });
+    } else {
+      personForm.innerHTML = `
+        <label>Given Name<input id="form_givenname" value="${person.givenname || ""}" disabled></label>
+        <label>Surname<input id="form_surname" value="${person.surname || ""}" disabled></label>
+        <label>Gender<select id="form_gender" disabled><option value="">Select</option><option ${person.gender === "Male" ? "selected" : ""}>Male</option><option ${person.gender === "Female" ? "selected" : ""}>Female</option></select></label>
+        <label>Date of Birth<input type="date" id="form_dob" value="${toDateInputValue(person.dob)}" disabled></label>
+        <label>Province<input id="form_province" value="${person.province_name || ""}" disabled></label>
+        <label>District<input id="form_district" value="${person.district_name || ""}" disabled></label>
+        <label>Commune<input id="form_commune" value="${person.commune_name || ""}" disabled></label>
+        <label>Village<input id="form_village" value="${person.village_name || ""}" disabled></label>
+      `;
+    }
+
+    const orderedHistory = [...history].sort((a, b) => {
+      const timeA = new Date(a.changed_at).getTime();
+      const timeB = new Date(b.changed_at).getTime();
+      
+      // Newest first (descending timestamp)
+      if (timeA !== timeB) {
+        return timeB - timeA;
+      }
+      // Same timestamp → higher ID first (assuming IDs increase over time)
+      return (b.id || 0) - (a.id || 0);
+    });
+
+    historyBox.innerHTML = orderedHistory.length
+      ? orderedHistory.map((item, index) => renderHistoryEntry(item, index + 1)).join("")
       : "<em>No edit history yet.</em>";
   }
   modal.style.display = "flex";
@@ -350,10 +509,10 @@ async function savePerson() {
     surname: document.getElementById("form_surname").value.trim(),
     gender: document.getElementById("form_gender").value,
     dob: document.getElementById("form_dob").value,
-    province_id: document.getElementById("form_province_id")?.value || document.getElementById("form_province")?.value || null,
-    district_id: document.getElementById("form_district_id")?.value || document.getElementById("form_district")?.value || null,
-    commune_id: document.getElementById("form_commune_id")?.value || document.getElementById("form_commune")?.value || null,
-    village_id: document.getElementById("form_village_id")?.value || document.getElementById("form_village")?.value || null,
+    province_id: document.getElementById("form_province")?.value || null,
+    district_id: document.getElementById("form_district")?.value || null,
+    commune_id: document.getElementById("form_commune")?.value || null,
+    village_id: document.getElementById("form_village")?.value || null,
   };
 
   try {

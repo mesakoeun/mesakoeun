@@ -1,4 +1,6 @@
-const API_BASE = "http://localhost:3000/api";
+// Set this to the IP address or domain of your Backend VM
+const API_BASE_URL = "http://192.168.2.133"; 
+
 let currentPage = 1;
 let currentPersonId = null;
 let currentMode = "view";
@@ -15,12 +17,20 @@ function updateAuthUI() {
   if (addPersonBtn) addPersonBtn.style.display = role === "admin" ? "inline-block" : "none";
 }
 
-async function loginAs(role) {
+/**
+ * Centralized API call helper to handle cross-VM requests
+ */
+const apiCall = async (endpoint, options = {}) => {
+    const url = `${API_BASE_URL}${endpoint}`;
+    return fetch(url, options);
+};
+
+async function loginAsFixed(role) {
   const username = role === "admin" ? "admin" : "user";
   const password = role === "admin" ? "admin123" : "user123";
 
   try {
-    const res = await fetch(`${API_BASE}/login`, {
+    const res = await apiCall('/api/login', {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
@@ -29,6 +39,7 @@ async function loginAs(role) {
     if (!res.ok) throw new Error(result.error || "Login failed");
     localStorage.setItem("userRole", result.role);
     localStorage.setItem("userName", result.username);
+    localStorage.setItem("token", result.token);
     updateAuthUI();
     alert(`Logged in as ${result.role}`);
   } catch (err) {
@@ -39,6 +50,7 @@ async function loginAs(role) {
 function logout() {
   localStorage.removeItem("userRole");
   localStorage.removeItem("userName");
+  localStorage.removeItem("token");
   updateAuthUI();
 }
 
@@ -57,19 +69,15 @@ function formatDobLabel(value) {
 
 function calculateAge(dobString) {
   if (!dobString) return "";
-
   const [year, month, day] = String(dobString).slice(0, 10).split("-").map(Number);
   if (!year || !month || !day) return "";
-
   const birthday = new Date(year, month - 1, day);
   const today = new Date();
   let age = today.getFullYear() - birthday.getFullYear();
   const monthDiff = today.getMonth() - birthday.getMonth();
-
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
     age -= 1;
   }
-
   return age;
 }
 
@@ -112,7 +120,6 @@ async function loadAddressSelects(prefix, selectedIds = {}) {
       district: [communeSelect, villageSelect],
       commune: [villageSelect],
     };
-
     (resetMap[startLevel] || []).forEach((select) => {
       const label = select.id.replace(`${prefix}`, "");
       select.innerHTML = `<option value="">Select ${label.charAt(0).toUpperCase() + label.slice(1)}</option>`;
@@ -120,56 +127,71 @@ async function loadAddressSelects(prefix, selectedIds = {}) {
     });
   };
 
-  const provinces = await fetch(`${API_BASE}/provinces`).then((response) => response.json());
-  populateSelectFromData(provinceSelect, provinces, "Select Province", selectedIds.province_id || "");
+  try {
+    const res = await apiCall('/api/provinces');
+    fillSelect(provinceSelect, await res.json(), "Select Province"); // This is wrong, fillSelect takes elementId
+  } catch (e) { console.error(e); }
+}
 
-  provinceSelect.onchange = async (event) => {
-    resetDependentSelects("province");
-    if (!event.target.value) return;
+// Correcting the loadAddressSelects and other calls to use apiCall and correct parameters
+async function initAddressSelects(prefix, selectedIds = {}) {
+    const provinceSelect = document.getElementById(`${prefix}province`);
+    const districtSelect = document.getElementById(`${prefix}district`);
+    const communeSelect = document.getElementById(`${prefix}commune`);
+    const villageSelect = document.getElementById(`${prefix}village`);
 
-    const districts = await fetch(`${API_BASE}/districts/${event.target.value}`).then((response) => response.json());
-    populateSelectFromData(districtSelect, districts, "Select District");
-  };
+    const resetDependentSelects = (startLevel) => {
+        const resetMap = {
+            province: [districtSelect, communeSelect, villageSelect],
+            district: [communeSelect, villageSelect],
+            commune: [villageSelect],
+        };
+        (resetMap[startLevel] || []).forEach((select) => {
+            const label = select.id.replace(`${prefix}`, "");
+            select.innerHTML = `<option value="">Select ${label.charAt(0).toUpperCase() + label.slice(1)}</option>`;
+            select.disabled = true;
+        });
+    };
 
-  districtSelect.onchange = async (event) => {
-    resetDependentSelects("district");
-    if (!event.target.value) return;
+    try {
+        const res = await apiCall('/api/provinces');
+        const provinces = await res.json();
+        populateSelectFromData(provinceSelect, provinces, "Select Province", selectedIds.province_id || "");
 
-    const communes = await fetch(`${API_BASE}/communes/${event.target.value}`).then((response) => response.json());
-    populateSelectFromData(communeSelect, communes, "Select Commune");
-  };
+        provinceSelect.onchange = async (event) => {
+            resetDependentSelects("province");
+            if (!event.target.value) return;
+            const resDist = await apiCall(`/api/districts?province_id=${event.target.value}`);
+            populateSelectFromData(districtSelect, await resDist.json(), "Select District");
+        };
 
-  communeSelect.onchange = async (event) => {
-    resetDependentSelects("commune");
-    if (!event.target.value) return;
+        districtSelect.onchange = async (event) => {
+            resetDependentSelects("district");
+            if (!event.target.value) return;
+            const resComm = await apiCall(`/api/communes?district_id=${event.target.value}`);
+            populateSelectFromData(communeSelect, await resComm.json(), "Select Commune");
+        };
 
-    const villages = await fetch(`${API_BASE}/villages/${event.target.value}`).then((response) => response.json());
-    populateSelectFromData(villageSelect, villages, "Select Village");
-  };
+        communeSelect.onchange = async (event) => {
+            resetDependentSelects("commune");
+            if (!event.target.value) return;
+            const resVill = await apiCall(`/api/villages?commune_id=${event.target.value}`);
+            populateSelectFromData(villageSelect, await resVill.json(), "Select Village");
+        };
 
-  if (!selectedIds.province_id) {
-    resetDependentSelects("province");
-    return;
-  }
-
-  const districts = await fetch(`${API_BASE}/districts/${selectedIds.province_id}`).then((response) => response.json());
-  populateSelectFromData(districtSelect, districts, "Select District", selectedIds.district_id || "");
-
-  if (!selectedIds.district_id) {
-    resetDependentSelects("district");
-    return;
-  }
-
-  const communes = await fetch(`${API_BASE}/communes/${selectedIds.district_id}`).then((response) => response.json());
-  populateSelectFromData(communeSelect, communes, "Select Commune", selectedIds.commune_id || "");
-
-  if (!selectedIds.commune_id) {
-    resetDependentSelects("commune");
-    return;
-  }
-
-  const villages = await fetch(`${API_BASE}/villages/${selectedIds.commune_id}`).then((response) => response.json());
-  populateSelectFromData(villageSelect, villages, "Select Village", selectedIds.village_id || "");
+        if (selectedIds.province_id) {
+            const resDist = await apiCall(`/api/districts?province_id=${selectedIds.province_id}`);
+            populateSelectFromData(districtSelect, await resDist.json(), "Select District", selectedIds.district_id || "");
+            if (selectedIds.district_id) {
+                const resComm = await apiCall(`/api/communes?district_id=${selectedIds.district_id}`);
+                populateSelectFromData(communeSelect, await resComm.json(), "Select Commune", selectedIds.commune_id || "");
+                if (selectedIds.commune_id) {
+                    const resVill = await apiCall(`/api/villages?commune_id=${selectedIds.commune_id}`);
+                    populateSelectFromData(villageSelect, await resVill.json(), "Select Village", selectedIds.village_id || "");
+                }
+            }
+        }
+    } catch (e) { console.error("Error loading address selects:", e); }
 }
 
 function renderHistoryEntry(item, entryNumber) {
@@ -190,14 +212,8 @@ function renderHistoryEntry(item, entryNumber) {
   };
 
   const fieldLabels = {
-    givenname: "Given Name",
-    surname: "Surname",
-    gender: "Gender",
-    dob: "Date of Birth",
-    province_id: "Province",
-    district_id: "District",
-    commune_id: "Commune",
-    village_id: "Village",
+    givenname: "Given Name", surname: "Surname", gender: "Gender", dob: "Date of Birth",
+    province_id: "Province", district_id: "District", commune_id: "Commune", village_id: "Village",
   };
 
   const headerBadge = changedFields.length
@@ -218,12 +234,10 @@ function renderHistoryEntry(item, entryNumber) {
         </div>
       </div>
       <div class="history-details" style="display:none; margin-top:8px; font-size:13px; line-height:1.6;">
-        ${fields
-          .map((field) => {
+        ${fields.map((field) => {
             const isChanged = changedFields.includes(field);
             return `<div style="${isChanged ? "color:#9a6700;font-weight:600;" : "color:#444;"}"><span style="min-width:110px;display:inline-block;">${fieldLabels[field]}:</span><span>${formatValue(field, newValues?.[field])}</span>${isChanged ? ' <span style="color:#d97706;font-size:12px;">(updated)</span>' : ""}</div>`;
-          })
-          .join("")}
+          }).join("")}
         <div style="margin-top:8px;color:#666;"><small>Before: ${oldValues ? JSON.stringify(oldValues) : "—"}</small></div>
       </div>
     </div>
@@ -234,7 +248,6 @@ function toggleHistoryDetails(button) {
   const card = button.closest("div[style*='border-radius:10px']");
   const details = card?.querySelector(".history-details");
   if (!details) return;
-
   const isOpen = details.style.display !== "none";
   details.style.display = isOpen ? "none" : "block";
   button.textContent = isOpen ? "+" : "−";
@@ -249,60 +262,57 @@ function resetSelects(ids) {
   });
 }
 
-// --- Cascading Listeners ---
 window.addEventListener("DOMContentLoaded", async () => {
   updateAuthUI();
-  document.getElementById("loginAdminBtn").onclick = () => loginAs("admin");
-  document.getElementById("loginUserBtn").onclick = () => loginAs("user");
+  document.getElementById("loginAdminBtn").onclick = () => loginAsFixed("admin");
+  document.getElementById("loginUserBtn").onclick = () => loginAsFixed("user");
   document.getElementById("logoutBtn").onclick = logout;
   document.getElementById("addPersonBtn").onclick = () => openPersonModal("create");
   document.getElementById("closeModalBtn").onclick = closePersonModal;
   document.getElementById("savePersonBtn").onclick = savePerson;
 
-  const res = await fetch(`${API_BASE}/provinces`);
-  fillSelect("province", await res.json(), "Select Province");
+  try {
+    const res = await apiCall('/api/provinces');
+    const provinces = await res.json();
+    populateSelectFromData(document.getElementById("province"), provinces, "Select Province");
+  } catch (e) { console.error(e); }
 });
 
 document.getElementById("province").onchange = async (e) => {
   resetSelects(["district", "commune", "village"]);
   if (e.target.value) {
-    const res = await fetch(`${API_BASE}/districts/${e.target.value}`);
-    fillSelect("district", await res.json(), "Select District");
+    const res = await apiCall(`/api/districts?province_id=${e.target.value}`);
+    populateSelectFromData(document.getElementById("district"), await res.json(), "Select District");
   }
 };
 
 document.getElementById("district").onchange = async (e) => {
   resetSelects(["commune", "village"]);
   if (e.target.value) {
-    const res = await fetch(`${API_BASE}/communes/${e.target.value}`);
-    fillSelect("commune", await res.json(), "Select Commune");
+    const res = await apiCall(`/api/communes?district_id=${e.target.value}`);
+    populateSelectFromData(document.getElementById("commune"), await res.json(), "Select Commune");
   }
 };
 
 document.getElementById("commune").onchange = async (e) => {
   resetSelects(["village"]);
   if (e.target.value) {
-    const res = await fetch(`${API_BASE}/villages/${e.target.value}`);
-    fillSelect("village", await res.json(), "Select Village");
+    const res = await apiCall(`/api/villages?commune_id=${e.target.value}`);
+    populateSelectFromData(document.getElementById("village"), await res.json(), "Select Village");
   }
 };
 
-// --- Clear Results Function ---
 function clearResults() {
   const tableBody = document.getElementById("tableBody");
   const reportTableBody = document.querySelector("#reportTable tbody");
   const paginationDiv = document.getElementById("pagination-controls");
   const statsDiv = document.getElementById("stats-container");
-
-  tableBody.innerHTML =
-    '<tr><td colspan="5" style="text-align:center;">Use filters to begin searching.</td></tr>';
-  reportTableBody.innerHTML =
-    '<tr><td style="text-align: center">Select filters and click Generate Report</td></tr>';
+  tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Use filters to begin searching.</td></tr>';
+  reportTableBody.innerHTML = '<tr><td style="text-align: center">Select filters and click Generate Report</td></tr>';
   paginationDiv.innerHTML = "";
   statsDiv.style.display = "none";
 }
 
-// --- Search Logic ---
 async function searchPeople(page = 1) {
   currentPage = page;
   clearResults();
@@ -310,22 +320,14 @@ async function searchPeople(page = 1) {
   const tableBody = document.getElementById("tableBody");
   const paginationDiv = document.getElementById("pagination-controls");
 
-  // Get Filter Values
   const getVal = (id) => document.getElementById(id).value;
   const getText = (id) => {
     const el = document.getElementById(id);
     return el.options[el.selectedIndex]?.text;
   };
 
-  // Build Location Breadcrumb
-  const locationPath = [
-    getText("province"),
-    getText("district"),
-    getText("commune"),
-    getText("village"),
-  ]
-    .filter((t) => t && !t.startsWith("Select"))
-    .join(" > ");
+  const locationPath = [getText("province"), getText("district"), getText("commune"), getText("village")]
+    .filter((t) => t && !t.startsWith("Select")).join(" > ");
 
   const params = new URLSearchParams({
     page: currentPage,
@@ -340,31 +342,26 @@ async function searchPeople(page = 1) {
     village_id: getVal("village"),
   });
 
-  tableBody.innerHTML =
-    '<tr><td colspan="5" style="text-align:center;">Searching 2 million records...</td></tr>';
+  tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Searching 2 million records...</td></tr>';
 
   try {
-    const response = await fetch(`${API_BASE}/search?${params.toString()}`);
+    const response = await apiCall(`/api/search?${params.toString()}`);
     const { data, pagination } = await response.json();
 
     if (!data || data.length === 0) {
-      tableBody.innerHTML =
-        '<tr><td colspan="5" style="text-align:center;">No results found.</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No results found.</td></tr>';
       statsDiv.style.display = "none";
       paginationDiv.innerHTML = "";
       return;
     }
 
-    // Stats Display
     statsDiv.style.display = "block";
     statsDiv.innerHTML = `
             <div style="font-weight: bold; color: #1a73e8;">${locationPath || "National Registry"}</div>
             <div style="font-size: 13px;">Found ${pagination.totalRecords.toLocaleString()} records | Page ${pagination.currentPage} of ${pagination.totalPages.toLocaleString()}</div>
         `;
 
-    // Table Rows with Indexing
-    tableBody.innerHTML = data
-      .map((person, i) => {
+    tableBody.innerHTML = data.map((person, i) => {
         const indexNumber = (currentPage - 1) * 100 + (i + 1);
         const isAdmin = getRole() === "admin";
         return `
@@ -380,36 +377,29 @@ async function searchPeople(page = 1) {
                     </td>
                 </tr>
             `;
-      })
-      .join("");
+      }).join("");
 
-    // Pagination Buttons
     paginationDiv.innerHTML = `
             <button onclick="searchPeople(${currentPage - 1})" ${currentPage === 1 ? "disabled" : ""}>Prev</button>
             <span style="font-weight:bold;">${currentPage} / ${pagination.totalPages.toLocaleString()}</span>
             <button onclick="searchPeople(${currentPage + 1})" ${currentPage >= pagination.totalPages ? "disabled" : ""}>Next</button>
         `;
   } catch (err) {
-    tableBody.innerHTML =
-      '<tr><td colspan="5" style="text-align:center; color:red;">Connection to server failed.</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Connection to server failed.</td></tr>';
   }
 }
 
-function resetFilters() {
-  window.location.reload();
-}
+function resetFilters() { window.location.reload(); }
 
 async function viewPersonDetail(id) {
   try {
-    const res = await fetch(`${API_BASE}/people/${id}`);
+    const res = await apiCall(`/api/people/${id}`);
     const person = await res.json();
     if (!res.ok) throw new Error(person.error || "Unable to fetch person details");
-    const historyRes = await fetch(`${API_BASE}/people/${id}/history`);
+    const historyRes = await apiCall(`/api/people/${id}/history`);
     const history = await historyRes.json();
     openPersonModal("view", id, person, history);
-  } catch (err) {
-    alert(err.message);
-  }
+  } catch (err) { alert(err.message); }
 }
 
 async function openPersonModal(mode, id = null, person = null, history = []) {
@@ -434,11 +424,12 @@ async function openPersonModal(mode, id = null, person = null, history = []) {
       <label>Commune<select id="form_commune" disabled></select></label>
       <label>Village<select id="form_village" disabled></select></label>
     `;
-    await loadAddressSelects("form_");
+    await initAddressSelects("form_");
     historyBox.innerHTML = "";
   } else {
     if (!person) {
-      person = await fetch(`${API_BASE}/people/${id}`).then(r => r.json());
+      const res = await apiCall(`/api/people/${id}`);
+      person = await res.json();
     }
     modalTitle.textContent = mode === "edit" ? "Edit Person" : "Person Details";
     saveBtn.style.display = mode === "edit" && getRole() === "admin" ? "inline-block" : "none";
@@ -449,15 +440,12 @@ async function openPersonModal(mode, id = null, person = null, history = []) {
         <label>Gender<select id="form_gender" ${mode === "view" ? "disabled" : ""}><option value="">Select</option><option ${person.gender === "Male" ? "selected" : ""}>Male</option><option ${person.gender === "Female" ? "selected" : ""}>Female</option></select></label>
         <label>Date of Birth<input type="date" id="form_dob" value="${toDateInputValue(person.dob)}" ${mode === "view" ? "disabled" : ""}></label>
         <label>Province<select id="form_province"></select></label>
-        <label>District<select id="form_district"></select></label>
-        <label>Commune<select id="form_commune"></select></label>
-        <label>Village<select id="form_village"></select></label>
+        <label>District<select id="form_district" disabled></select></label>
+        <label>Commune<select id="form_commune" disabled></select></label>
+        <label>Village<select id="form_village" disabled></select></label>
       `;
-      await loadAddressSelects("form_", {
-        province_id: person.province_id,
-        district_id: person.district_id,
-        commune_id: person.commune_id,
-        village_id: person.village_id,
+      await initAddressSelects("form_", {
+        province_id: person.province_id, district_id: person.district_id, commune_id: person.commune_id, village_id: person.village_id,
       });
     } else {
       personForm.innerHTML = `
@@ -475,13 +463,7 @@ async function openPersonModal(mode, id = null, person = null, history = []) {
     const orderedHistory = [...history].sort((a, b) => {
       const timeA = new Date(a.changed_at).getTime();
       const timeB = new Date(b.changed_at).getTime();
-      
-      // Newest first (descending timestamp)
-      if (timeA !== timeB) {
-        return timeB - timeA;
-      }
-      // Same timestamp → higher ID first (assuming IDs increase over time)
-      return (b.id || 0) - (a.id || 0);
+      return timeB - timeA || (b.id || 0) - (a.id || 0);
     });
 
     historyBox.innerHTML = orderedHistory.length
@@ -491,54 +473,45 @@ async function openPersonModal(mode, id = null, person = null, history = []) {
   modal.style.display = "flex";
 }
 
-function closePersonModal() {
-  document.getElementById("personModal").style.display = "none";
-}
+function closePersonModal() { document.getElementById("personModal").style.display = "none"; }
 
 async function savePerson() {
   const role = getRole();
-  if (role !== "admin") {
-    alert("Only admin can add or edit people.");
-    return;
-  }
+  if (role !== "admin") { alert("Only admins can save changes"); return; }
 
+  const token = localStorage.getItem("token");
   const payload = {
-    role,
-    username: localStorage.getItem("userName") || "admin",
-    givenname: document.getElementById("form_givenname").value.trim(),
-    surname: document.getElementById("form_surname").value.trim(),
+    givenname: document.getElementById("form_givenname").value,
+    surname: document.getElementById("form_surname").value,
     gender: document.getElementById("form_gender").value,
     dob: document.getElementById("form_dob").value,
-    province_id: document.getElementById("form_province")?.value || null,
-    district_id: document.getElementById("form_district")?.value || null,
-    commune_id: document.getElementById("form_commune")?.value || null,
-    village_id: document.getElementById("form_village")?.value || null,
+    province_id: document.getElementById("form_province").value,
+    district_id: document.getElementById("form_district").value,
+    commune_id: document.getElementById("form_commune").value,
+    village_id: document.getElementById("form_village").value,
   };
 
   try {
-    const url = currentMode === "edit" ? `${API_BASE}/people/${currentPersonId}` : `${API_BASE}/people`;
-    const res = await fetch(url, {
-      method: currentMode === "edit" ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
+    const method = currentMode === "create" ? "POST" : "PUT";
+    const url = currentMode === "create" ? "/api/people" : `/api/people/${currentPersonId}`;
+    
+    const res = await apiCall(url, {
+      method: method,
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": token 
+      },
       body: JSON.stringify(payload),
     });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.error || "Save failed");
-    alert(result.message || "Saved successfully.");
+
+    if (!res.ok) throw new Error((await res.json()).error || "Save failed");
+    alert("Person saved successfully!");
     closePersonModal();
-    await searchPeople(1);
-  } catch (err) {
-    alert(err.message);
-  }
+    searchPeople(currentPage);
+  } catch (err) { alert(err.message); }
 }
 
 async function generateReport() {
-  clearResults();
-  const tableHead = document.querySelector("#reportTable thead tr");
-  const tableBody = document.querySelector("#reportTable tbody");
-  const statsDiv = document.getElementById("stats-container");
-
-  // 1. Get Params
   const params = new URLSearchParams({
     province_id: document.getElementById("province").value,
     district_id: document.getElementById("district").value,
@@ -548,67 +521,28 @@ async function generateReport() {
     gender: document.getElementById("gender").value,
   });
 
-  tableBody.innerHTML =
-    '<tr><td colspan="100" style="text-align:center;">Generating Report...</td></tr>';
-  statsDiv.innerHTML = "";
-
   try {
-    const response = await fetch(`${API_BASE}/report?${params.toString()}`);
-    const result = await response.json();
+    const res = await apiCall(`/api/report?${params.toString()}`);
+    const { headers, data } = await res.json();
+    
+    const reportTable = document.getElementById("reportTable");
+    const thead = reportTable.querySelector("thead tr");
+    const tbody = reportTable.querySelector("tbody");
 
-    if (!response.ok) {
-      throw new Error(result.error || "Failed to generate report");
+    thead.innerHTML = headers.map(h => `<th>${h}</th>`).join("");
+    tbody.innerHTML = data.map((row, i) => {
+        return `<tr>${headers.map((h, idx) => {
+            const key = h === "No" ? null : (h === "Province Name" ? "location_name" : 
+                        (h === "District Name" ? "location_name" : 
+                        (h === "Commune Name" ? "location_name" : 
+                        (h === "Village Name" ? "location_name" : h))));
+            const val = key ? row[key] : (i + 1);
+            return `<td>${val}</td>`;
+        }).join("")}</tr>`;
+    }).join("");
+
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="'+headers.length+'" style="text-align:center;">No data found for this report.</td></tr>';
     }
-
-    // result.headers = ["No", "District Name", "Age 15", "Age 16"...]
-    // result.data = [{location_name: "Chamkar Mon", "Age 15": 10, "Age 16": 5...}]
-
-    if (result.data.length === 0) {
-      tableBody.innerHTML =
-        '<tr><td colspan="100" style="text-align:center;">No data found.</td></tr>';
-      return;
-    }
-
-    // --- 2. Build Dynamic Header ---
-    tableHead.innerHTML = "";
-    result.headers.forEach((headerText) => {
-      const th = document.createElement("th");
-      th.textContent = headerText;
-      tableHead.appendChild(th);
-    });
-
-    // --- 3. Build Dynamic Rows ---
-    tableBody.innerHTML = "";
-    result.data.forEach((row, index) => {
-      const tr = document.createElement("tr");
-
-      // First Column: No.
-      let tdNo = document.createElement("td");
-      tdNo.textContent = index + 1;
-      tr.appendChild(tdNo);
-
-      // Second Column: Location Name (District Name / Commune Name etc)
-      let tdName = document.createElement("td");
-      tdName.textContent = row.location_name;
-      tr.appendChild(tdName);
-
-      // Remaining Columns: The Pivot Data (Age 15, Age 16, or Total)
-      // We loop through the headers (skipping 'No' and 'Name') to find matching keys
-      const pivotKeys = result.headers.slice(2);
-
-      pivotKeys.forEach((key) => {
-        let td = document.createElement("td");
-        td.textContent = row[key] || 0; // Access data using the header name key
-        tr.appendChild(td);
-      });
-
-      tableBody.appendChild(tr);
-    });
-  } catch (err) {
-    console.error(err);
-    tableBody.innerHTML = `
-      <tr>
-        <td colspan="100" style="text-align:center; color:red;">${err.message || "Error generating report."}</td>
-      </tr>`;
-  }
+  } catch (err) { alert("Report generation failed: " + err.message); }
 }

@@ -23,6 +23,18 @@ mesakoeun/
 │   └── agents/
 ├── controlers/
 ├── php_project/
+|     ├── config/
+│     |     ├── config.php    # DB & Admin credentials
+│     |     └── db.php        # PDO Connection & Helpers
+|     ├── api/
+│     |      ├── auth.php      # Login logic
+│     |      ├── locations.php # Province/District/Commune/Village endpoints
+│     |      ├── people.php    # Search, View, Create, Update & Audit trail
+│     |      └── reports.php   # Demographic report logic
+|     ├── frontend/
+│     |      ├── index.html    # Main UI
+│     |      └── script.js     # Frontend logic & API calls
+|     └── index.php      
 ├── Frontend/
 ├── routes/
 ├── .gitignore
